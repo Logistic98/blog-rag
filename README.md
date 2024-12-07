@@ -12,6 +12,8 @@
 
 ![blog-rag效果图](README.assets/display.png)
 
+本项目的技术实现细节详见我的博客：[针对自己博客定制的私域知识问答系统](https://www.eula.club/blogs/针对自己博客定制的私域知识问答系统.html)
+
 ## 2. 技术架构
 
 [1] 基础框架
@@ -115,6 +117,7 @@ $ cd script && python3 milvus_password.py
 Step3：下载所需模型
 
 ```shell
+$ mkdir model_weight
 $ cd script && python3 download_models.py
 ```
 
