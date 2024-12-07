@@ -1,0 +1,15 @@
+huggingface_hub
+uvicorn
+fastapi
+pydantic
+aiohttp
+openai
+uvicorn
+pymilvus==2.4.9
+milvus-model==0.2.8
+FlagEmbedding==1.2.11
+torch
+datasets
+peft
+tiktoken
+redis
