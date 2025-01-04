@@ -42,25 +42,35 @@ class MilvusManager:
                 name="chunk_file",
                 dtype=DataType.VARCHAR,
                 max_length=255,
-                is_primary=True
+                is_primary=True,
+                description="切片文件，用于唯一标识"
             ),
             FieldSchema(
                 name="doc_name",
                 dtype=DataType.VARCHAR,
-                max_length=255
+                max_length=255,
+                description="文档文件名"
+            ),
+            FieldSchema(
+                name="file_type",
+                dtype=DataType.VARCHAR,
+                max_length=50,
+                description="文件类型（chunk、metadata、toc）"
             ),
             FieldSchema(
                 name="chunk_content",
                 dtype=DataType.VARCHAR,
-                max_length=max_content_length
+                max_length=max_content_length,
+                description="切片内容"
             ),
             FieldSchema(
                 name="dense_vector",
                 dtype=DataType.FLOAT_VECTOR,
-                dim=dense_dim
-            ),
+                dim=dense_dim,
+                description="切片内容的向量化信息"
+            )
         ]
-        schema = CollectionSchema(fields, description="Schema for blog data storage")
+        schema = CollectionSchema(fields, description="文档数据知识库")
         col = Collection(col_name, schema, consistency_level="Strong")
 
         if not col.has_index():
@@ -138,6 +148,18 @@ def delete_removed_files(col, redis_manager, existing_file_hashes, current_files
         return 0
 
 
+def determine_file_type(filename):
+    """根据文件名确定文件类型。"""
+    if "chunk" in filename.lower():
+        return "chunk"
+    elif "metadata" in filename.lower():
+        return "metadata"
+    elif "toc" in filename.lower():
+        return "toc"
+    else:
+        return "unknown"
+
+
 def process_documents(data_dir, collection_name, batch_size, ef, col, redis_manager, max_content_length, flush_interval, model_reload_interval):
     """文档处理，支持动态调整批次大小和累计进度跟踪。"""
     processed_files_count = 0
@@ -160,7 +182,8 @@ def process_documents(data_dir, collection_name, batch_size, ef, col, redis_mana
         if not os.path.exists(file_path):
             logging.error(f"文件 {file_path} 不存在，跳过处理。")
             continue
-        all_files.append((filename, doc_name, file_path, file_hash))
+        file_type = determine_file_type(filename)
+        all_files.append((filename, doc_name, file_path, file_hash, file_type))
 
         previous_hash = existing_file_hashes.get(filename)
         if previous_hash is None:
@@ -180,8 +203,9 @@ def process_documents(data_dir, collection_name, batch_size, ef, col, redis_mana
         doc_names = []
         chunk_contents = []
         file_hashes = {}
+        file_types = []
 
-        for filename, doc_name, file_path, file_hash in batch_files:
+        for filename, doc_name, file_path, file_hash, file_type in batch_files:
             chunk_file = filename
             previous_hash = existing_file_hashes.get(chunk_file)
 
@@ -206,6 +230,7 @@ def process_documents(data_dir, collection_name, batch_size, ef, col, redis_mana
 
             chunk_files.append(chunk_file)
             doc_names.append(doc_name)
+            file_types.append(file_type)
             chunk_contents.append(chunk_content)
             file_hashes[chunk_file] = file_hash
 
@@ -228,6 +253,7 @@ def process_documents(data_dir, collection_name, batch_size, ef, col, redis_mana
                 col.insert([
                     chunk_files,
                     doc_names,
+                    file_types,
                     chunk_contents,
                     embeddings_list.tolist()
                 ])
@@ -261,7 +287,7 @@ def process_documents(data_dir, collection_name, batch_size, ef, col, redis_mana
                 batch_size=BATCH_SIZE
             )
 
-        del chunk_files, doc_names, chunk_contents, embeddings_list
+        del chunk_files, doc_names, chunk_contents, embeddings_list, file_types
         torch.cuda.empty_cache()
         gc.collect()
 
