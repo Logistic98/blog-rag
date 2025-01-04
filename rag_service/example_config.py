@@ -18,8 +18,10 @@ class Config:
     MILVUS_KB_NAME = 'vuepress_blog'                                      # Milvus知识库的名称
 
     # 知识库检索及模型
+    QUESTION_REWRITE_ENABLED = True                                       # 是否开启重写重写扩展
+    QUESTION_REWRITE_NUM = 2                                              # 问题重写扩展数量（额外扩展的问题数量，不含原问题）
     EMBEDDING_MODEL = '../model_weight/bge-m3'                            # 嵌入模型的路径
-    RETRIEVE_TOPK = 5                                                     # 检索的文档数量上限
+    RETRIEVE_TOPK = 5                                                     # 每个问题检索的文档数量
     RERANKING_MODEL = '../model_weight/bge-reranker-v2-m3'                # 重排序模型的路径
     USE_RERANKER = True                                                   # 是否使用重排序模型进行结果优化，建议将其开启
 
