@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 
+
 # 用于扩展原始问题的Prompt
 def build_rewrite_prompt(original_question: str, question_rewrite_num: int) -> str:
     """
     根据 question_rewrite_num 动态生成 JSON 数组格式，用于请求 LLM 扩展问题。
     """
     prompt = f"""
+你是一个智能助手，负责对用户的原问题进行重写扩展。
 请阅读用户的问题，然后重新组织并扩展成 {question_rewrite_num} 个不同问法。
 用户问题：{original_question}
 
@@ -46,6 +48,8 @@ ANSWER_PROMPT_TEMPLATE = """你是一个智能助手，你需要从知识库中�
 2. **知识库内容使用**：请尽量从知识库中提取出准确和相关的信息，构建回答时避免遗漏关键细节。保证回答简洁、准确且具有针对性。
 
 3. **输出格式**：请确保你的回答格式清晰，图像和文本在语义上是连贯的。确保不丢失任何相关内容，并尽可能详细地保留配图描述。
+
+4. **特别注意**：如果需要返回链接内容的话，不要创造新的链接，也不要修改知识库返回的链接，需要确保给出的链接地址是可以访问的。
 
 ## 当前日期：{current_date}
 
