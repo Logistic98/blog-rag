@@ -44,6 +44,42 @@ def generate_stream_response(
     }
 
 
+def deduplicate_chunks(chunks):
+    """
+    去重切片，切片的text相同则视为是一个，只保留每组中得分最高的切片。
+    """
+    retrieved_chunks_map = {}
+
+    for chunk in chunks:
+        chunk_copy = chunk.copy()
+        score_value = chunk_copy.pop('score', None)
+
+        chunk_key = frozenset(chunk_copy.items())
+
+        if chunk_key not in retrieved_chunks_map:
+            retrieved_chunks_map[chunk_key] = {
+                'score': score_value,
+                **chunk_copy
+            }
+        else:
+            existing_score = retrieved_chunks_map[chunk_key]['score']
+            if score_value > existing_score:
+                retrieved_chunks_map[chunk_key] = {
+                    'score': score_value,
+                    **chunk_copy
+                }
+
+    deduplicated_chunks = []
+    for chunk_key, chunk_data in retrieved_chunks_map.items():
+        restored_chunk = {
+            'score': chunk_data['score'],
+            **dict(chunk_key)
+        }
+        deduplicated_chunks.append(restored_chunk)
+
+    return deduplicated_chunks
+
+
 async def rewrite_question(llm: LLM, model: str, original_question: str, question_rewrite_num: int) -> list:
     """
     使用 LLM 将用户的原始问题进行扩展，返回新的问题列表。
@@ -154,7 +190,7 @@ async def handle_streaming_response(data, llm, kb):
     else:
         expanded_questions = [last_message_content]
     yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, f'扩展为{len(expanded_questions)}个问题'), ensure_ascii=False)}\n\n"
-    logger.info(f"expanded_questions={expanded_questions}")
+    logger.info(f"重写扩展后的问题：{expanded_questions}")
 
     # Step 2: 检索相关文档
     yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '知识数据检索中...'), ensure_ascii=False)}\n\n"
@@ -162,15 +198,12 @@ async def handle_streaming_response(data, llm, kb):
     search_tasks = [kb.retrieve(q, kb.config.RETRIEVE_TOPK) for q in expanded_questions]
     all_results = await asyncio.gather(*search_tasks)
     retrieved_chunks = []
-    seen_chunks = set()
     for (chunks, refs) in all_results:
-        for chunk in chunks:
-            chunk_key = frozenset(chunk.items())
-            if chunk_key not in seen_chunks:
-                seen_chunks.add(chunk_key)
-                retrieved_chunks.append(chunk)
+        retrieved_chunks.extend(chunks)
+    retrieved_chunks = deduplicate_chunks(retrieved_chunks)
+    logger.info(f'检索出的文档切片: {retrieved_chunks}')  ####
     yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, f'检索到{len(retrieved_chunks)}条数据'), ensure_ascii=False)}\n\n"
-    logger.info(f'检索出的相关文档数量(合并去重后): {len(retrieved_chunks)}')
+    logger.info(f'检索出的相关文档数量: {len(retrieved_chunks)}')
 
     # Step 3: 判断相关性
     yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, '数据相关性分析中...'), ensure_ascii=False)}\n\n"
@@ -179,12 +212,11 @@ async def handle_streaming_response(data, llm, kb):
         for chunk in retrieved_chunks
     ]
     relevancy_results = await asyncio.gather(*tasks)
-
     hit_chunks = [chunk for chunk, is_relevant in zip(retrieved_chunks, relevancy_results) if is_relevant][
                  :kb.config.RETRIEVE_TOPK]
     doc_names = [chunk['doc_name'] for chunk in hit_chunks if chunk['doc_name']]
     references = list(dict.fromkeys(doc_names))
-
+    logger.info(f'相关性判断后的文档切片: {hit_chunks}')  ####
     yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, f'存在{len(hit_chunks)}条相关数据'), ensure_ascii=False)}\n\n"
     logger.info(f'使用的参考文档: {references}')
 
@@ -235,13 +267,9 @@ async def handle_non_streaming_response(data, llm, kb):
     search_tasks = [kb.retrieve(q, kb.config.RETRIEVE_TOPK) for q in expanded_questions]
     all_results = await asyncio.gather(*search_tasks)
     retrieved_chunks = []
-    seen_chunks = set()
     for (chunks, refs) in all_results:
-        for chunk in chunks:
-            chunk_key = frozenset(chunk.items())
-            if chunk_key not in seen_chunks:
-                seen_chunks.add(chunk_key)
-                retrieved_chunks.append(chunk)
+        retrieved_chunks.extend(chunks)
+    retrieved_chunks = deduplicate_chunks(retrieved_chunks)
     logger.info(f'检索出的相关文档数量(合并去重后): {len(retrieved_chunks)}')
 
     # Step 3: 判断相关性
