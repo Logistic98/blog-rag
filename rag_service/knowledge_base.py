@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import gc
+
+import numpy as np
 import torch
 from pymilvus import Collection, connections
 from pymilvus.model.hybrid import BGEM3EmbeddingFunction
@@ -28,10 +30,14 @@ class KnowledgeBase:
 
     async def retrieve(self, query, topk):
         query_embeddings = self.embedder([query])
+        query_embeddings["dense"] = query_embeddings["dense"] / np.linalg.norm(query_embeddings["dense"], axis=1,
+                                                                               keepdims=True)
+        filter_expr = "file_type == 'chunk'"
         res = self.kb_collection.search(
             query_embeddings["dense"], "dense_vector",
-            {"metric_type": "L2"}, limit=topk * 2,
-            output_fields=["chunk_content", "doc_name"]
+            {"metric_type": "COSINE"}, limit=topk * 2,
+            output_fields=["chunk_content", "doc_name"],
+            expr=filter_expr
         )
         hits = res[0]
         if self.use_reranker:

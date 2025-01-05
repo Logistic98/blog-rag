@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
 
-import os
-import torch
 import gc
-import logging
+import os
 import hashlib
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import torch
 import numpy as np
 from tqdm import tqdm
-from pymilvus import FieldSchema, CollectionSchema, DataType, Collection, connections
+from pymilvus import FieldSchema, CollectionSchema, DataType, Collection, connections, utility
 import redis
 from milvus_model.hybrid import BGEM3EmbeddingFunction
+from logging.handlers import RotatingFileHandler
 
 
 def batch_generator(iterable, batch_size):
@@ -71,12 +74,19 @@ class MilvusManager:
             )
         ]
         schema = CollectionSchema(fields, description="文档数据知识库")
-        col = Collection(col_name, schema, consistency_level="Strong")
+
+        if utility.has_collection(col_name):
+            col = Collection(col_name)
+            logging.info(f"集合 '{col_name}' 已存在。")
+        else:
+            col = Collection(col_name, schema, consistency_level="Strong")
+            logging.info(f"集合 '{col_name}' 创建成功。")
 
         if not col.has_index():
             logging.info("未找到索引。正在创建索引...")
-            dense_index = {"index_type": "FLAT", "metric_type": "L2"}
+            dense_index = {"index_type": "IVF_FLAT", "metric_type": "COSINE", "params": {"nlist": 128}}
             col.create_index("dense_vector", dense_index)
+            logging.info("索引创建完成。")
         else:
             logging.info("索引已存在，使用现有索引。")
         return col
@@ -95,40 +105,57 @@ class RedisManager:
         return existing_hashes
 
     def update_existing_file_hashes(self, file_hashes):
-        """更新 Redis 中的文件哈希值。"""
+        """批量更新 Redis 中的文件哈希值。"""
         if file_hashes:
-            self.client.hset(self.file_hashes_key, mapping=file_hashes)
+            with self.client.pipeline() as pipe:
+                pipe.hset(self.file_hashes_key, mapping=file_hashes)
+                pipe.execute()
             logging.info(f"已更新 {len(file_hashes)} 个文件哈希到 Redis。")
 
     def delete_file_hashes(self, keys):
-        """从 Redis 删除文件哈希值。"""
+        """批量从 Redis 删除文件哈希值。"""
         if keys:
-            self.client.hdel(self.file_hashes_key, *keys)
+            with self.client.pipeline() as pipe:
+                pipe.hdel(self.file_hashes_key, *keys)
+                pipe.execute()
             logging.info(f"已从 Redis 删除 {len(keys)} 个文件哈希")
 
 
 def calculate_file_hash(file_path):
     """计算文件内容的哈希值（SHA256）。"""
-    with open(file_path, 'rb') as f:
-        file_content = f.read()
-    return hashlib.sha256(file_content).hexdigest()
+    try:
+        with open(file_path, 'rb') as f:
+            file_content = f.read()
+        file_hash = hashlib.sha256(file_content).hexdigest()
+        filename = os.path.basename(file_path)
+        doc_name = os.path.basename(os.path.dirname(file_path))
+        return filename, doc_name, file_hash
+    except Exception as e:
+        logging.error(f"计算文件哈希时出错：{file_path}, 错误：{e}")
+        return None
 
 
 def get_current_files(data_dir):
     """获取当前目录中所有的文件及其哈希值，用于与已记录的哈希进行比较"""
     current_files = {}
-    for root, _, files in os.walk(data_dir):
-        if os.path.commonpath([data_dir, root]) != data_dir:
-            continue
-        doc_name = os.path.relpath(root, data_dir)
-        doc_name = os.path.basename(doc_name)
-        md_files = [
-            f for f in files if f.endswith('.md')
-        ]
-        for filename in md_files:
-            file_path = os.path.abspath(os.path.join(root, filename))
-            file_hash = calculate_file_hash(file_path)
-            current_files[filename] = (doc_name, file_hash)
+    futures = []
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        for root, _, files in os.walk(data_dir):
+            if os.path.commonpath([data_dir, root]) != data_dir:
+                continue
+            doc_name = os.path.basename(os.path.relpath(root, data_dir))
+            md_files = [f for f in files if f.endswith('.md')]
+            for filename in md_files:
+                file_path = os.path.abspath(os.path.join(root, filename))
+                futures.append(executor.submit(calculate_file_hash, file_path))
+
+        for future in tqdm(as_completed(futures), total=len(futures), desc="计算文件哈希"):
+            result = future.result()
+            if result:
+                filename, doc_name, file_hash = result
+                current_files[filename] = (doc_name, file_hash)
+
+    logging.info(f"当前目录中找到 {len(current_files)} 个文件。")
     return current_files
 
 
@@ -139,10 +166,14 @@ def delete_removed_files(col, redis_manager, existing_file_hashes, current_files
     if to_delete:
         logging.info(f"将删除 {len(to_delete)} 个文件的记录")
         expr = f'chunk_file in ["' + '","'.join(to_delete) + '"]'
-        col.delete(expr=expr)
-        logging.info(f"已删除 {len(to_delete)} 个文件的记录")
-        redis_manager.delete_file_hashes(to_delete)
-        return len(to_delete)
+        try:
+            col.delete(expr=expr)
+            logging.info(f"已删除 {len(to_delete)} 个文件的记录")
+            redis_manager.delete_file_hashes(to_delete)
+            return len(to_delete)
+        except Exception as e:
+            logging.error(f"删除文件记录时出错：{e}")
+            return 0
     else:
         logging.info("没有找到需要删除的文件记录")
         return 0
@@ -160,11 +191,10 @@ def determine_file_type(filename):
         return "unknown"
 
 
-def process_documents(data_dir, collection_name, batch_size, ef, col, redis_manager, max_content_length, flush_interval, model_reload_interval):
+def process_documents(data_dir, collection_name, batch_size, ef, col, redis_manager, max_content_length):
     """文档处理，支持动态调整批次大小和累计进度跟踪。"""
     processed_files_count = 0
     updated_redis_count = 0
-    current_batch = 0
 
     added_docs = 0
     updated_docs = 0
@@ -191,14 +221,15 @@ def process_documents(data_dir, collection_name, batch_size, ef, col, redis_mana
         elif file_hash != previous_hash:
             updated_docs += 1
 
-    total_files = len([file for file in all_files if file[3] != existing_file_hashes.get(file[0])])
+    files_to_process = [file for file in all_files if file[3] != existing_file_hashes.get(file[0])]
+    total_files = len(files_to_process)
     progress_bar = tqdm(
         desc="处理文件进度",
         total=total_files,
         unit="个文件"
     )
 
-    for batch_files in batch_generator(all_files, batch_size):
+    for batch_files in batch_generator(files_to_process, batch_size):
         chunk_files = []
         doc_names = []
         chunk_contents = []
@@ -220,6 +251,9 @@ def process_documents(data_dir, collection_name, batch_size, ef, col, redis_mana
             except FileNotFoundError:
                 logging.error(f"文件 {file_path} 不存在，跳过处理。")
                 continue
+            except Exception as e:
+                logging.error(f"读取文件 {file_path} 时出错：{e}")
+                continue
 
             content_length = len(chunk_content)
             if content_length > max_content_length:
@@ -240,59 +274,62 @@ def process_documents(data_dir, collection_name, batch_size, ef, col, redis_mana
 
         try:
             with torch.no_grad():
-                embeddings_list = []
-                for sub_batch in batch_generator(chunk_contents, batch_size // 2):
-                    embeddings = ef(sub_batch)
-                    embeddings_list.extend(embeddings["dense"])
-
-                if isinstance(embeddings_list, list):
-                    embeddings_list = np.array(embeddings_list)
-                elif isinstance(embeddings_list, torch.Tensor):
-                    embeddings_list = embeddings_list.cpu().numpy()
-
-                col.insert([
-                    chunk_files,
-                    doc_names,
-                    file_types,
-                    chunk_contents,
-                    embeddings_list.tolist()
-                ])
+                embeddings = ef(chunk_contents)["dense"]
+                embeddings = embeddings.cpu().numpy() if isinstance(embeddings, torch.Tensor) else np.array(embeddings)
+                embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+                entities = [
+                    {
+                        "chunk_file": cf,
+                        "doc_name": dn,
+                        "file_type": ft,
+                        "chunk_content": cc,
+                        "dense_vector": dv
+                    }
+                    for cf, dn, ft, cc, dv in zip(chunk_files, doc_names, file_types, chunk_contents, embeddings.tolist())
+                ]
+                col.insert(entities)
+                try:
+                    redis_manager.update_existing_file_hashes(file_hashes)
+                    updated_redis_count += len(file_hashes)
+                except Exception as redis_e:
+                    logging.error(f"更新 Redis 失败: {redis_e}. 尝试回滚 Milvus 插入.")
+                    rollback_expr = f'chunk_file in ["' + '","'.join(chunk_files) + '"]'
+                    try:
+                        col.delete(expr=rollback_expr)
+                        logging.info(f"已回滚 Milvus 中的 {len(chunk_files)} 条记录。")
+                    except Exception as rollback_e:
+                        logging.error(f"回滚 Milvus 插入时出错：{rollback_e}")
+                    raise redis_e
 
                 existing_file_hashes.update(file_hashes)
-                redis_manager.update_existing_file_hashes(file_hashes)
-                updated_redis_count += len(file_hashes)
 
-                tqdm.write(f"已更新 {len(file_hashes)} 个文件哈希到 Redis。")
+            try:
+                col.flush()
+                logging.info("已刷新数据到 Milvus。")
+            except Exception as e:
+                logging.error(f"刷新数据到 Milvus 时出错：{e}")
 
         except RuntimeError as e:
             tqdm.write(f"显存不足或其他错误，尝试减小批次大小: {e}")
             batch_size = max(1, batch_size // 2)
+            logging.warning(f"批次大小调整为 {batch_size}")
+            continue
+        except Exception as e:
+            logging.error(f"处理批次时出错：{e}")
             continue
 
         processed_files_count += len(chunk_files)
-        current_batch += 1
 
-        if processed_files_count % flush_interval == 0:
-            col.flush()
-
-        if current_batch % model_reload_interval == 0:
-            tqdm.write("正在重载模型以释放内存...")
-            del ef
-            torch.cuda.empty_cache()
-            gc.collect()
-            ef = BGEM3EmbeddingFunction(
-                model_name=BGE_M3_PATH,
-                use_fp16=False,
-                device=DEVICE,
-                batch_size=BATCH_SIZE
-            )
-
-        del chunk_files, doc_names, chunk_contents, embeddings_list, file_types
-        torch.cuda.empty_cache()
+        del chunk_files, doc_names, file_types, chunk_contents, embeddings, entities
         gc.collect()
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
 
-    col.flush()
-    col.load()
+    try:
+        col.flush()
+        col.load()
+    except Exception as e:
+        logging.error(f"最终刷新或加载集合时出错：{e}")
 
     progress_bar.close()
 
@@ -315,22 +352,17 @@ if __name__ == "__main__":
     REDIS_PASSWORD = "52497Vr62K94qeksg82679o22kr774ee"  # Redis密码
     REDIS_KEY = "file_hashes"                            # Redis键
     BGE_M3_PATH = "../model_weight/bge-m3"               # 模型路径
-    MODEL_RELOAD_INTERVAL = 5                            # 模型重载间隔
     DATA_DIR = "../data/blog_output"                     # 数据目录
     BATCH_SIZE = 5                                       # 批次大小
     MAX_CONTENT_LENGTH = 60000                           # 最大内容长度
-    FLUSH_INTERVAL = 5                                   # 刷新间隔
     LOG_FILE = "build_index.log"                         # 日志文件路径
 
     class TqdmLoggingHandler(logging.Handler):
-        def __init__(self, level=logging.NOTSET):
-            super().__init__(level)
-
+        """自定义日志处理器，用于与 tqdm 兼容的日志输出。"""
         def emit(self, record):
             try:
                 msg = self.format(record)
                 tqdm.write(msg)
-                self.flush()
             except Exception:
                 self.handleError(record)
 
@@ -342,13 +374,13 @@ if __name__ == "__main__":
     tqdm_handler.setFormatter(formatter)
     logger.addHandler(tqdm_handler)
 
-    file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8')
+    file_handler = RotatingFileHandler(LOG_FILE, maxBytes=10**6, backupCount=5, encoding='utf-8')
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 
     if torch.cuda.is_available():
         DEVICE = "cuda"
-    elif torch.backends.mps.is_available():
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         DEVICE = "mps"
     else:
         DEVICE = "cpu"
@@ -357,24 +389,34 @@ if __name__ == "__main__":
     redis_manager = RedisManager(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_KEY)
     milvus_manager = MilvusManager(MILVUS_HOST, MILVUS_PORT, MILVUS_USER, MILVUS_PASSWORD)
 
-    ef = BGEM3EmbeddingFunction(
-        model_name=BGE_M3_PATH,
-        use_fp16=False,
-        device=DEVICE,
-        batch_size=BATCH_SIZE
-    )
-    dense_dim = ef.dim["dense"]
+    try:
+        ef = BGEM3EmbeddingFunction(
+            model_name=BGE_M3_PATH,
+            use_fp16=False,
+            device=DEVICE,
+            batch_size=BATCH_SIZE
+        )
+        dense_dim = ef.dim["dense"]
+        logging.info("嵌入函数初始化成功。")
+    except Exception as e:
+        logging.error(f"初始化嵌入函数时出错：{e}")
+        exit(1)
 
-    collection = milvus_manager.create_collection(MILVUS_COLLECTION_NAME, dense_dim, MAX_CONTENT_LENGTH)
+    try:
+        collection = milvus_manager.create_collection(MILVUS_COLLECTION_NAME, dense_dim, MAX_CONTENT_LENGTH)
+    except Exception as e:
+        logging.error(f"创建或获取 Milvus 集合时出错：{e}")
+        exit(1)
 
-    process_documents(
-        DATA_DIR,
-        MILVUS_COLLECTION_NAME,
-        BATCH_SIZE,
-        ef,
-        collection,
-        redis_manager,
-        MAX_CONTENT_LENGTH,
-        FLUSH_INTERVAL,
-        MODEL_RELOAD_INTERVAL
-    )
+    try:
+        process_documents(DATA_DIR, MILVUS_COLLECTION_NAME, BATCH_SIZE, ef, collection, redis_manager, MAX_CONTENT_LENGTH)
+    except Exception as e:
+        logging.error(f"处理文档时出错：{e}")
+        exit(1)
+
+    del ef
+    del collection
+    gc.collect()
+    if DEVICE == "cuda":
+        torch.cuda.empty_cache()
+    logging.info("所有资源已成功释放。")
