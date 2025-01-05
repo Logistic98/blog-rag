@@ -10,7 +10,7 @@
 - 安全机制：使用到的中间件都配置了账号验证，部署的大模型和RAG服务也都开启了密钥验证，保证其安全性。
 - 界面展示：支持分析步骤的展示与流式输出、Markdown格式渲染、参考博客链接的返回，具有较好的页面体验。
 
-![blog-rag效果图](README.assets/display.png)
+![blog-rag效果图](README.assets/display/display.png)
 
 本项目的技术实现细节详见我的博客：[针对自己博客定制的私域知识问答系统](https://www.eula.club/blogs/针对自己博客定制的私域知识问答系统.html)
 
@@ -32,7 +32,13 @@
 - Embedding模型：bge-m3（同时支持密集检索、多向量检索、稀疏检索，有较好混合召回效果）
 - 重排序模型：bge-reranker-v2-m3（搜到的文档不都是相关的，重排序可让更相关的文档排前面）
 
-## 3. 部署使用
+## 3. 核心流程
+
+问题重写——问题扩展——问题相关判断——多数投票——检索文档数据——重排序——文档相关判断——大模型总结
+
+![flowchart](README.assets/flowchart/flowchart.png)
+
+## 4. 部署使用
 
 运行环境：Macbook Pro 2021，M1 pro芯片，16G内存，1024G存储，macOS Sonoma 14.5 系统，Python3.10环境
 
@@ -233,4 +239,4 @@ $ npm run serve
 
 启动成功之后，使用Chrome浏览器访问 [http://localhost:28888](http://localhost:28888) 地址即可使用。
 
-![display](README.assets/display.gif)
+![display](README.assets/display/display.gif)

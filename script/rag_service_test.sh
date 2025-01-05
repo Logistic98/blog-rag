@@ -9,11 +9,5 @@ curl --location 'http://127.0.0.1:18888/v1/chat/completions' \
       "content": "docker容器如何迁移"
     }
   ],
-  "tools": [],
-  "do_sample": true,
-  "temperature": 0,
-  "top_p": 0,
-  "n": 1,
-  "max_tokens": 0,
   "stream": true
 }'
