@@ -23,19 +23,44 @@ class KnowledgeBase:
             BGERerankFunction(model_name=config.RERANKING_MODEL, device=device)
             if self.use_reranker else None
         )
-        connections.connect("default", host=config.MILVUS_SERVER, port=config.MILVUS_PORT, user=config.MILVUS_USER, password=config.MILVUS_PASSWORD)
+        connections.connect(
+            "default",
+            host=config.MILVUS_SERVER,
+            port=config.MILVUS_PORT,
+            user=config.MILVUS_USER,
+            password=config.MILVUS_PASSWORD
+        )
         self.kb_collection = Collection(config.MILVUS_KB_NAME, consistency_level="Strong")
         self.kb_collection.load()
         self.config = config
 
-    async def retrieve(self, query, topk):
+    async def retrieve(self, query, topk, file_types=['chunk']):
+        """
+        根据查询和指定的文件类型检索文档片段。
+
+        参数:
+            query (str): 用户查询。
+            topk (int): 每种文件类型检索的文档数量。
+            file_types (list): 要检索的文件类型列表（例如 ['toc', 'metadata', 'chunk']）。
+
+        返回:
+            list: 检索到的文档片段。
+            list: 参考文档名称列表。
+        """
         query_embeddings = self.embedder([query])
-        query_embeddings["dense"] = query_embeddings["dense"] / np.linalg.norm(query_embeddings["dense"], axis=1,
-                                                                               keepdims=True)
-        filter_expr = "file_type == 'chunk'"
+        query_embeddings["dense"] = query_embeddings["dense"] / np.linalg.norm(
+            query_embeddings["dense"], axis=1, keepdims=True
+        )
+
+        if len(file_types) == 1:
+            filter_expr = f"file_type == '{file_types[0]}'"
+        else:
+            file_types_str = " or ".join([f"file_type == '{ft}'" for ft in file_types])
+            filter_expr = f"({file_types_str})"
+
         res = self.kb_collection.search(
             query_embeddings["dense"], "dense_vector",
-            {"metric_type": "COSINE"}, limit=topk * 2,
+            {"metric_type": "COSINE"}, limit=topk,
             output_fields=["chunk_content", "doc_name"],
             expr=filter_expr
         )
@@ -48,12 +73,12 @@ class KnowledgeBase:
             unique_doc_names = list(dict.fromkeys(doc_names))
             references = unique_doc_names
             return [
-                {
-                    "text": hit.text,
-                    "score": hit.score,
-                    "doc_name": content_to_doc_name.get(hit.text)
-                } for hit in results
-            ], references
+                       {
+                           "text": hit.text,
+                           "score": hit.score,
+                           "doc_name": content_to_doc_name.get(hit.text)
+                       } for hit in results
+                   ], references
         else:
             chunks = []
             doc_names = []

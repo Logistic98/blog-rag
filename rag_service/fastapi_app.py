@@ -102,7 +102,6 @@ async def rewrite_question(llm: LLM, model: str, original_question: str, questio
 
         content = rewrite_response["choices"][0]["message"]["content"]
         logger.info(f"重写扩展结果（尝试 {attempt}）: {content}")
-
         content_without_backticks = re.sub(r"```(json)?(.*?)```", r"\2", content, flags=re.DOTALL).strip()
 
         try:
@@ -119,7 +118,7 @@ async def rewrite_question(llm: LLM, model: str, original_question: str, questio
         except Exception as e:
             logger.warning(f"重写扩展解析失败 (第 {attempt} 次): {e}")
             if attempt < max_retry:
-                time.sleep(0.02)
+                await asyncio.sleep(0.02)
             else:
                 logger.warning("已达最大重试次数，放弃重写扩展。")
 
@@ -167,10 +166,10 @@ async def decorate_answer(
 async def handle_streaming_response(data, llm, kb):
     """
     主要处理流程:
-    1. 先对问题进行重写扩展 (Step=1)
-    2. 使用扩展问题进行检索 (Step=2)
-    3. 数据相关性分析 (Step=3)
-    4. 总结并返回答案 (Step=4)
+    1. 对原问题进行重写扩展
+    2. 判断是否需检索知识库
+    3. 检索相关的知识库数据
+    4. 大模型总结并返回答案
     """
     request_id = str(uuid.uuid4())
     model = kb.config.LLM_MODEL
@@ -179,8 +178,8 @@ async def handle_streaming_response(data, llm, kb):
     logger.info(f'用户输入的传参: {json.dumps(data.dict(), ensure_ascii=False)}')
     full_response = ''
 
-    # Step 1: 问题重写扩展
-    yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, '问题重写扩展中...'), ensure_ascii=False)}\n\n"
+    # Step 1: 对原问题进行重写扩展
+    yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, '对原问题进行重写扩展...'), ensure_ascii=False)}\n\n"
     if kb.config.QUESTION_REWRITE_ENABLED:
         await asyncio.sleep(0)
         expanded_questions = await rewrite_question(
@@ -189,52 +188,93 @@ async def handle_streaming_response(data, llm, kb):
         expanded_questions.append(last_message_content)
     else:
         expanded_questions = [last_message_content]
-    yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, f'扩展为{len(expanded_questions)}个问题'), ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, f'重写扩展为{len(expanded_questions)}个问题'), ensure_ascii=False)}\n\n"
     logger.info(f"重写扩展后的问题：{expanded_questions}")
 
-    # Step 2: 检索相关文档
-    yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '知识数据检索中...'), ensure_ascii=False)}\n\n"
+    # Step 2: 判断是否需检索知识库
+    yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '判断是否需检索知识库...'), ensure_ascii=False)}\n\n"
     await asyncio.sleep(0)
-    search_tasks = [kb.retrieve(q, kb.config.RETRIEVE_TOPK) for q in expanded_questions]
-    all_results = await asyncio.gather(*search_tasks)
-    retrieved_chunks = []
-    for (chunks, refs) in all_results:
-        retrieved_chunks.extend(chunks)
-    retrieved_chunks = deduplicate_chunks(retrieved_chunks)
-    logger.info(f'检索出的文档切片: {retrieved_chunks}')  ####
-    yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, f'检索到{len(retrieved_chunks)}条数据'), ensure_ascii=False)}\n\n"
-    logger.info(f'检索出的相关文档数量: {len(retrieved_chunks)}')
+    preliminary_results_tasks = [kb.retrieve(q, topk=kb.config.RETRIEVE_TOPK, file_types=['toc', 'metadata']) for q in expanded_questions]
+    preliminary_results = await asyncio.gather(*preliminary_results_tasks)
+    preliminary_chunks = []
+    for (chunks, refs) in preliminary_results:
+        preliminary_chunks.extend(chunks)
+    preliminary_chunks = deduplicate_chunks(preliminary_chunks)
+    logger.info(f'检索出的 toc 和 metadata 切片: {preliminary_chunks}')
+    await asyncio.sleep(0)
+    yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '判断是否需检索知识库...'), ensure_ascii=False)}\n\n"
+    relevance_found = False
+    for chunk in preliminary_chunks:
+        is_relevant = await judge_relevant(llm, model, kb.config.STRATEGY, kb.config.THRESHOLD, last_message_content, chunk, messages[:-1])
+        if is_relevant:
+            relevance_found = True
+            logger.info("至少存在1个相关的切片，继续检索文档切片。")
+            yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '需要检索知识库，继续检索文档切片...'), ensure_ascii=False)}\n\n"
+            break
+    needs_retrieve_chunk = relevance_found
+    if not needs_retrieve_chunk:
+        logger.info("不存在任何相关的切片，跳过检索文档切片。")
+        yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '不需要检索知识库，大模型直接生成...'), ensure_ascii=False)}\n\n"
+        hit_chunks = []
+        references = []
 
-    # Step 3: 判断相关性
-    yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, '数据相关性分析中...'), ensure_ascii=False)}\n\n"
-    tasks = [
-        judge_relevant(llm, model, kb.config.STRATEGY, kb.config.THRESHOLD, last_message_content, chunk, messages[:-1])
-        for chunk in retrieved_chunks
-    ]
-    relevancy_results = await asyncio.gather(*tasks)
-    hit_chunks = [chunk for chunk, is_relevant in zip(retrieved_chunks, relevancy_results) if is_relevant][
-                 :kb.config.RETRIEVE_TOPK]
-    doc_names = [chunk['doc_name'] for chunk in hit_chunks if chunk['doc_name']]
-    references = list(dict.fromkeys(doc_names))
-    logger.info(f'相关性判断后的文档切片: {hit_chunks}')  ####
-    yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, f'存在{len(hit_chunks)}条相关数据'), ensure_ascii=False)}\n\n"
-    logger.info(f'使用的参考文档: {references}')
+    # Step 3: 检索相关的知识库数据
+    if needs_retrieve_chunk:
+        yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, '检索文档切片中...'), ensure_ascii=False)}\n\n"
+        await asyncio.sleep(0)
+        search_tasks = [kb.retrieve(q, kb.config.RETRIEVE_TOPK, file_types=['chunk']) for q in expanded_questions]
+        all_results = await asyncio.gather(*search_tasks)
+        retrieved_chunks = []
+        for (chunks, refs) in all_results:
+            retrieved_chunks.extend(chunks)
+        retrieved_chunks = deduplicate_chunks(retrieved_chunks)
+        logger.info(f'检索出的文档切片: {retrieved_chunks}')
+        logger.info(f'检索出的相关文档数量: {len(retrieved_chunks)}')
+        yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, '数据相关性分析中...'), ensure_ascii=False)}\n\n"
+        tasks = [
+            judge_relevant(llm, model, kb.config.STRATEGY, kb.config.THRESHOLD, last_message_content, chunk, messages[:-1])
+            for chunk in retrieved_chunks
+        ]
+        relevancy_results = await asyncio.gather(*tasks)
+        hit_chunks = [chunk for chunk, is_rel in zip(retrieved_chunks, relevancy_results) if is_rel][:kb.config.RETRIEVE_TOPK]
+        doc_names = [chunk['doc_name'] for chunk in hit_chunks if chunk['doc_name']]
+        references = list(dict.fromkeys(doc_names))
+        logger.info(f'相关性判断后的文档切片: {hit_chunks}')
+        logger.info(f'相关性判断后的相关文档数量: {len(hit_chunks)}')
+        yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, f'存在{len(hit_chunks)}条相关数据'), ensure_ascii=False)}\n\n"
 
     # Step 4: 总结最终答案
-    async for response in decorate_answer(request_id, llm, model, hit_chunks, messages,
-                                          data.temperature, data.extra_body, data.stop, stream=True):
-        for choice in response.get('choices', []):
-            content = choice['delta'].get('content', None)
-            if content not in [None, ""]:
-                full_response += content
-        for choice in response.get('choices', []):
-            choice['delta']['reference'] = []
-        yield f"data: {json.dumps(response, ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps(generate_stream_response(request_id, model, 4, '正在总结答案...'), ensure_ascii=False)}\n\n"
+    if needs_retrieve_chunk and hit_chunks:
+        async for response in decorate_answer(request_id, llm, model, hit_chunks, messages,
+                                              data.temperature, data.extra_body, data.stop, stream=True):
+            for choice in response.get('choices', []):
+                content = choice['delta'].get('content', None)
+                if content not in [None, ""]:
+                    full_response += content
+            for choice in response.get('choices', []):
+                choice['delta']['reference'] = []
+            yield f"data: {json.dumps(response, ensure_ascii=False)}\n\n"
 
-    final_chunk = generate_stream_response(request_id, model, 4, '回答完成', references)
-    final_chunk['choices'][0]['finish_reason'] = "stop"
-    logger.info(f'流式输出最终响应: {full_response}')
-    yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
+        final_chunk = generate_stream_response(request_id, model, 4, '回答完成', references)
+        final_chunk['choices'][0]['finish_reason'] = "stop"
+        logger.info(f'流式输出最终响应: {full_response}')
+        yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
+    else:
+        async for response in decorate_answer(request_id, llm, model, preliminary_chunks, messages,
+                                              data.temperature, data.extra_body, data.stop, stream=True):
+            for choice in response.get('choices', []):
+                content = choice['delta'].get('content', None)
+                if content not in [None, ""]:
+                    full_response += content
+            for choice in response.get('choices', []):
+                choice['delta']['reference'] = []
+            yield f"data: {json.dumps(response, ensure_ascii=False)}\n\n"
+
+        final_chunk = generate_stream_response(request_id, model, 4, '回答完成', references)
+        final_chunk['choices'][0]['finish_reason'] = "stop"
+        logger.info(f'流式输出最终响应: {full_response}')
+        yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
 
     yield "data: [DONE]\n\n"
 
@@ -242,18 +282,19 @@ async def handle_streaming_response(data, llm, kb):
 async def handle_non_streaming_response(data, llm, kb):
     """
     主要处理流程:
-    1. 先对问题进行重写扩展 (Step=1)
-    2. 使用扩展问题进行检索 (Step=2)
-    3. 数据相关性分析 (Step=3)
-    4. 总结并返回答案 (Step=4)
+    1. 对原问题进行重写扩展
+    2. 判断是否需检索知识库
+    3. 检索相关的知识库数据
+    4. 大模型总结并返回答案
     """
     request_id = str(uuid.uuid4())
     model = kb.config.LLM_MODEL
     messages = [{"role": msg.role, "content": msg.content} for msg in data.messages]
     last_message_content = messages[-1]["content"]
     logger.info(f'用户输入的传参: {json.dumps(data.dict(), ensure_ascii=False)}')
+    full_response = ''
 
-    # Step 1: 问题重写扩展
+    # Step 1: 对原问题进行重写扩展
     if kb.config.QUESTION_REWRITE_ENABLED:
         expanded_questions = await rewrite_question(
             llm, model, last_message_content, kb.config.QUESTION_REWRITE_NUM
@@ -261,41 +302,82 @@ async def handle_non_streaming_response(data, llm, kb):
         expanded_questions.append(last_message_content)
     else:
         expanded_questions = [last_message_content]
-    logger.info(f"expanded_questions={expanded_questions}")
+    logger.info(f"重写扩展后的问题：{expanded_questions}")
 
-    # Step 2: 检索相关文档
-    search_tasks = [kb.retrieve(q, kb.config.RETRIEVE_TOPK) for q in expanded_questions]
-    all_results = await asyncio.gather(*search_tasks)
-    retrieved_chunks = []
-    for (chunks, refs) in all_results:
-        retrieved_chunks.extend(chunks)
-    retrieved_chunks = deduplicate_chunks(retrieved_chunks)
-    logger.info(f'检索出的相关文档数量(合并去重后): {len(retrieved_chunks)}')
+    # Step 2: 判断是否需检索知识库
+    preliminary_results = await asyncio.gather(*[
+        kb.retrieve(q, topk=kb.config.RETRIEVE_TOPK, file_types=['toc', 'metadata']) for q in expanded_questions
+    ])
+    preliminary_chunks = []
+    for (chunks, refs) in preliminary_results:
+        preliminary_chunks.extend(chunks)
+    preliminary_chunks = deduplicate_chunks(preliminary_chunks)
+    logger.info(f'检索出的 toc 和 metadata 切片: {preliminary_chunks}')
+    logger.info("判断是否需检索知识库...")
+    relevance_found = False
+    for chunk in preliminary_chunks:
+        is_relevant = await judge_relevant(
+            llm, model, kb.config.STRATEGY, kb.config.THRESHOLD,
+            last_message_content, chunk, messages[:-1]
+        )
+        if is_relevant:
+            relevance_found = True
+            logger.info("至少存在1个相关的切片，继续检索文档切片。")
+            break
+    needs_retrieve_chunk = relevance_found
+    if not needs_retrieve_chunk:
+        logger.info("不存在任何相关的切片，跳过检索文档切片。")
 
-    # Step 3: 判断相关性
-    tasks = [
-        judge_relevant(llm, model, kb.config.STRATEGY, kb.config.THRESHOLD, last_message_content, chunk, messages[:-1])
-        for chunk in retrieved_chunks
-    ]
-    relevancy_results = await asyncio.gather(*tasks)
-    hit_chunks = [chunk for chunk, is_relevant in zip(retrieved_chunks, relevancy_results) if is_relevant][
-                 :kb.config.RETRIEVE_TOPK]
-    doc_names = [chunk['doc_name'] for chunk in hit_chunks if chunk['doc_name']]
-    references = list(dict.fromkeys(doc_names))
-    logger.info(f'使用的参考文档: {references}')
+    # Step 3: 检索相关的知识库数据
+    if needs_retrieve_chunk:
+        logger.info("检索文档切片中...")
+        search_tasks = [kb.retrieve(q, kb.config.RETRIEVE_TOPK, file_types=['chunk']) for q in expanded_questions]
+        all_results = await asyncio.gather(*search_tasks)
+        retrieved_chunks = []
+        for (chunks, refs) in all_results:
+            retrieved_chunks.extend(chunks)
+        retrieved_chunks = deduplicate_chunks(retrieved_chunks)
+        logger.info(f'检索出的文档切片: {retrieved_chunks}')
+        logger.info(f'检索出的相关文档数量: {len(retrieved_chunks)}')
+        tasks = [
+            judge_relevant(
+                llm, model, kb.config.STRATEGY, kb.config.THRESHOLD,
+                last_message_content, chunk, messages[:-1]
+            )
+            for chunk in retrieved_chunks
+        ]
+        relevancy_results = await asyncio.gather(*tasks)
+        hit_chunks = [chunk for chunk, is_rel in zip(retrieved_chunks, relevancy_results) if is_rel][:kb.config.RETRIEVE_TOPK]
+        doc_names = [chunk['doc_name'] for chunk in hit_chunks if chunk['doc_name']]
+        references = list(dict.fromkeys(doc_names))
+        logger.info(f'相关性判断后的文档切片: {hit_chunks}')
+        logger.info(f'相关性判断后的相关文档数量: {len(hit_chunks)}')
+    else:
+        hit_chunks = []
+        references = []
+        logger.info("不需要检索知识库，大模型直接生成...")
 
     # Step 4: 返回最终回答
-    if hit_chunks:
-        async for response in decorate_answer(request_id, llm, model, hit_chunks, messages,
-                                              data.temperature, data.extra_body, data.stop, stream=False):
+    if needs_retrieve_chunk and hit_chunks:
+        async for response in decorate_answer(
+            request_id, llm, model, hit_chunks, messages,
+            data.temperature, data.extra_body, data.stop, stream=False
+        ):
             response['choices'][0]['message']['reference'] = references
-            logger.info(f'非流式最终响应: {response["choices"][0]["message"]["content"]}')
+            logger.info(f'非流式输出最终响应: {response["choices"][0]["message"]["content"]}')
             return response
     else:
-        response = await llm.chat_no_stream(model, messages, data.temperature, data.extra_body, data.stop)
-        response['choices'][0]['message']['reference'] = []
+        response_gen = decorate_answer(
+            request_id, llm, model, preliminary_chunks, messages,
+            data.temperature, data.extra_body, data.stop, stream=False
+        )
+        try:
+            response = await response_gen.__anext__()
+        except StopAsyncIteration:
+            response = {}
+        response['choices'][0]['message']['reference'] = references
         response["id"] = request_id
-        logger.info(f'非流式最终响应: {response["choices"][0]["message"]["content"]}')
+        logger.info(f'非流式输出最终响应: {response["choices"][0]["message"]["content"]}')
         return response
 
 
