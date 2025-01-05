@@ -14,7 +14,7 @@ from config import Config
 from knowledge_base import KnowledgeBase
 from llm import LLM
 from models import ChatCompletionRequest
-from validators import judge_relevant
+from validators import chunk_judge_relevant, chat_judge_relevant
 from logging_setup import logger
 from prompts import build_rewrite_prompt, ANSWER_PROMPT_TEMPLATE
 
@@ -177,6 +177,8 @@ async def handle_streaming_response(data, llm, kb):
     last_message_content = messages[-1]["content"]
     logger.info(f'用户输入的传参: {json.dumps(data.dict(), ensure_ascii=False)}')
     full_response = ''
+    references = []
+    needs_retrieve_chunk = True
 
     # Step 1: 对原问题进行重写扩展
     yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, '对原问题进行重写扩展...'), ensure_ascii=False)}\n\n"
@@ -193,33 +195,19 @@ async def handle_streaming_response(data, llm, kb):
 
     # Step 2: 判断是否需检索知识库
     yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '判断是否需检索知识库...'), ensure_ascii=False)}\n\n"
-    await asyncio.sleep(0)
-    preliminary_results_tasks = [kb.retrieve(q, topk=kb.config.RETRIEVE_TOPK, file_types=['toc', 'metadata']) for q in expanded_questions]
-    preliminary_results = await asyncio.gather(*preliminary_results_tasks)
-    preliminary_chunks = []
-    for (chunks, refs) in preliminary_results:
-        preliminary_chunks.extend(chunks)
-    preliminary_chunks = deduplicate_chunks(preliminary_chunks)
-    logger.info(f'检索出的 toc 和 metadata 切片: {preliminary_chunks}')
-    await asyncio.sleep(0)
-    yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '判断是否需检索知识库...'), ensure_ascii=False)}\n\n"
-    relevance_found = False
-    for chunk in preliminary_chunks:
-        is_relevant = await judge_relevant(llm, model, kb.config.STRATEGY, kb.config.THRESHOLD, last_message_content, chunk, messages[:-1])
-        if is_relevant:
-            relevance_found = True
-            logger.info("至少存在1个相关的切片，继续检索文档切片。")
-            yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '需要检索知识库，继续检索文档切片...'), ensure_ascii=False)}\n\n"
-            break
-    needs_retrieve_chunk = relevance_found
-    if not needs_retrieve_chunk:
-        logger.info("不存在任何相关的切片，跳过检索文档切片。")
-        yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '不需要检索知识库，大模型直接生成...'), ensure_ascii=False)}\n\n"
-        hit_chunks = []
-        references = []
+    if kb.config.QUESTION_RETRIEVE_ENABLED:
+        judgments = []
+        for eq in expanded_questions:
+            is_relevant = await chat_judge_relevant(llm, model, eq, messages[:-1])
+            judgments.append(is_relevant)
+        relevant_count = sum(1 for j in judgments if j)
+        needs_retrieve_chunk = relevant_count >= len(expanded_questions) / 2
+        if not needs_retrieve_chunk:
+            logger.info(f'不需要检索知识库，大模型直接生成...')
+            yield f"data: {json.dumps(generate_stream_response(request_id, model, 2, '不需要检索知识库，大模型直接生成...'), ensure_ascii=False)}\n\n"
 
     # Step 3: 检索相关的知识库数据
-    if needs_retrieve_chunk:
+    if (kb.config.QUESTION_RETRIEVE_ENABLED and needs_retrieve_chunk) or not kb.config.QUESTION_RETRIEVE_ENABLED:
         yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, '检索文档切片中...'), ensure_ascii=False)}\n\n"
         await asyncio.sleep(0)
         search_tasks = [kb.retrieve(q, kb.config.RETRIEVE_TOPK, file_types=['chunk']) for q in expanded_questions]
@@ -232,7 +220,7 @@ async def handle_streaming_response(data, llm, kb):
         logger.info(f'检索出的相关文档数量: {len(retrieved_chunks)}')
         yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, '数据相关性分析中...'), ensure_ascii=False)}\n\n"
         tasks = [
-            judge_relevant(llm, model, kb.config.STRATEGY, kb.config.THRESHOLD, last_message_content, chunk, messages[:-1])
+            chunk_judge_relevant(llm, model, kb.config.STRATEGY, kb.config.THRESHOLD, last_message_content, chunk, messages[:-1])
             for chunk in retrieved_chunks
         ]
         relevancy_results = await asyncio.gather(*tasks)
@@ -245,7 +233,7 @@ async def handle_streaming_response(data, llm, kb):
 
     # Step 4: 总结最终答案
     yield f"data: {json.dumps(generate_stream_response(request_id, model, 4, '正在总结答案...'), ensure_ascii=False)}\n\n"
-    if needs_retrieve_chunk and hit_chunks:
+    if needs_retrieve_chunk and 'hit_chunks' in locals() and hit_chunks:
         async for response in decorate_answer(request_id, llm, model, hit_chunks, messages,
                                               data.temperature, data.extra_body, data.stop, stream=True):
             for choice in response.get('choices', []):
@@ -257,24 +245,36 @@ async def handle_streaming_response(data, llm, kb):
             yield f"data: {json.dumps(response, ensure_ascii=False)}\n\n"
 
         final_chunk = generate_stream_response(request_id, model, 4, '回答完成', references)
-        final_chunk['choices'][0]['finish_reason'] = "stop"
         logger.info(f'流式输出最终响应: {full_response}')
         yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
+
     else:
-        async for response in decorate_answer(request_id, llm, model, preliminary_chunks, messages,
-                                              data.temperature, data.extra_body, data.stop, stream=True):
+        async for response in llm.chat_stream(
+            model,
+            [{"role": "system", "content": last_message_content}, *messages],
+            data.temperature,
+            data.extra_body,
+            data.stop
+        ):
             for choice in response.get('choices', []):
                 content = choice['delta'].get('content', None)
                 if content not in [None, ""]:
                     full_response += content
-            for choice in response.get('choices', []):
-                choice['delta']['reference'] = []
+                    wrapped_resp = generate_stream_response(
+                        request_id=request_id,
+                        model=model,
+                        step=4,
+                        message="正在总结...",
+                        references=references,
+                        content=content
+                    )
+                    choice['delta'].update(wrapped_resp['choices'][0]['delta'])
+
+            response['id'] = request_id
+            response['model'] = model
             yield f"data: {json.dumps(response, ensure_ascii=False)}\n\n"
 
-        final_chunk = generate_stream_response(request_id, model, 4, '回答完成', references)
-        final_chunk['choices'][0]['finish_reason'] = "stop"
         logger.info(f'流式输出最终响应: {full_response}')
-        yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
 
     yield "data: [DONE]\n\n"
 
@@ -292,7 +292,8 @@ async def handle_non_streaming_response(data, llm, kb):
     messages = [{"role": msg.role, "content": msg.content} for msg in data.messages]
     last_message_content = messages[-1]["content"]
     logger.info(f'用户输入的传参: {json.dumps(data.dict(), ensure_ascii=False)}')
-    full_response = ''
+    references = []
+    needs_retrieve_chunk = True
 
     # Step 1: 对原问题进行重写扩展
     if kb.config.QUESTION_REWRITE_ENABLED:
@@ -305,31 +306,18 @@ async def handle_non_streaming_response(data, llm, kb):
     logger.info(f"重写扩展后的问题：{expanded_questions}")
 
     # Step 2: 判断是否需检索知识库
-    preliminary_results = await asyncio.gather(*[
-        kb.retrieve(q, topk=kb.config.RETRIEVE_TOPK, file_types=['toc', 'metadata']) for q in expanded_questions
-    ])
-    preliminary_chunks = []
-    for (chunks, refs) in preliminary_results:
-        preliminary_chunks.extend(chunks)
-    preliminary_chunks = deduplicate_chunks(preliminary_chunks)
-    logger.info(f'检索出的 toc 和 metadata 切片: {preliminary_chunks}')
-    logger.info("判断是否需检索知识库...")
-    relevance_found = False
-    for chunk in preliminary_chunks:
-        is_relevant = await judge_relevant(
-            llm, model, kb.config.STRATEGY, kb.config.THRESHOLD,
-            last_message_content, chunk, messages[:-1]
-        )
-        if is_relevant:
-            relevance_found = True
-            logger.info("至少存在1个相关的切片，继续检索文档切片。")
-            break
-    needs_retrieve_chunk = relevance_found
-    if not needs_retrieve_chunk:
-        logger.info("不存在任何相关的切片，跳过检索文档切片。")
+    if kb.config.QUESTION_RETRIEVE_ENABLED:
+        judgments = []
+        for eq in expanded_questions:
+            is_relevant = await chat_judge_relevant(llm, model, eq, messages[:-1])
+            judgments.append(is_relevant)
+        relevant_count = sum(1 for j in judgments if j)
+        needs_retrieve_chunk = relevant_count >= len(expanded_questions) / 2
+        if not needs_retrieve_chunk:
+            logger.info(f'不需要检索知识库，大模型直接生成...')
 
     # Step 3: 检索相关的知识库数据
-    if needs_retrieve_chunk:
+    if (kb.config.QUESTION_RETRIEVE_ENABLED and needs_retrieve_chunk) or not kb.config.QUESTION_RETRIEVE_ENABLED:
         logger.info("检索文档切片中...")
         search_tasks = [kb.retrieve(q, kb.config.RETRIEVE_TOPK, file_types=['chunk']) for q in expanded_questions]
         all_results = await asyncio.gather(*search_tasks)
@@ -340,7 +328,7 @@ async def handle_non_streaming_response(data, llm, kb):
         logger.info(f'检索出的文档切片: {retrieved_chunks}')
         logger.info(f'检索出的相关文档数量: {len(retrieved_chunks)}')
         tasks = [
-            judge_relevant(
+            chunk_judge_relevant(
                 llm, model, kb.config.STRATEGY, kb.config.THRESHOLD,
                 last_message_content, chunk, messages[:-1]
             )
@@ -354,7 +342,6 @@ async def handle_non_streaming_response(data, llm, kb):
         logger.info(f'相关性判断后的相关文档数量: {len(hit_chunks)}')
     else:
         hit_chunks = []
-        references = []
         logger.info("不需要检索知识库，大模型直接生成...")
 
     # Step 4: 返回最终回答
@@ -367,17 +354,10 @@ async def handle_non_streaming_response(data, llm, kb):
             logger.info(f'非流式输出最终响应: {response["choices"][0]["message"]["content"]}')
             return response
     else:
-        response_gen = decorate_answer(
-            request_id, llm, model, preliminary_chunks, messages,
-            data.temperature, data.extra_body, data.stop, stream=False
-        )
-        try:
-            response = await response_gen.__anext__()
-        except StopAsyncIteration:
-            response = {}
-        response['choices'][0]['message']['reference'] = references
+        response = await llm.chat_no_stream(model, messages, data.temperature, data.extra_body, data.stop)
+        response['choices'][0]['message']['reference'] = []
         response["id"] = request_id
-        logger.info(f'非流式输出最终响应: {response["choices"][0]["message"]["content"]}')
+        logger.info(f'非流式最终响应: {response["choices"][0]["message"]["content"]}')
         return response
 
 

@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
 
-from prompts import RELEVANT_PROMPT_TEMPLATE
+from prompts import RELEVANT_PROMPT_TEMPLATE, CHAT_PROMPT_TEMPLATE
 
 
-async def judge_relevant(llm, model, strategy, threshold, query, chunk, history=[]):
+async def chunk_judge_relevant(llm, model, strategy, threshold, query, chunk, history=[]):
     if strategy == "llm":
         prompt = RELEVANT_PROMPT_TEMPLATE.format(chunk_text=chunk['text'][:500], query=query)
         response = await llm.chat_no_stream(
@@ -15,3 +15,12 @@ async def judge_relevant(llm, model, strategy, threshold, query, chunk, history=
     elif strategy == "thres":
         return chunk.get("score", float('inf')) <= threshold, chunk
     return False
+
+
+async def chat_judge_relevant(llm, model, query, history=[]):
+    prompt = CHAT_PROMPT_TEMPLATE.format(query=query)
+    response = await llm.chat_no_stream(
+        model, [*history, {"role": "user", "content": prompt}],
+        temperature=0, extra_body={"guided_choice": ["否", "是"]}
+    )
+    return response["choices"][0]["message"]["content"].strip() == "是"
