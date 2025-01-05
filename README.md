@@ -166,6 +166,9 @@ MILVUS_PASSWORD = 'cG72vdgVWX5ypaWV'                                  # Milvus�
 MILVUS_KB_NAME = 'vuepress_blog'                                      # Milvus知识库的名称
 
 # 知识库检索及模型
+QUESTION_REWRITE_ENABLED = True                                       # 是否开启重写重写扩展
+QUESTION_REWRITE_NUM = 2                                              # 问题重写扩展数量（额外扩展的问题数量）
+QUESTION_RETRIEVE_ENABLED = True                                      # 是否开启问题相关性判断
 EMBEDDING_MODEL = '../model_weight/bge-m3'                            # 嵌入模型的路径
 RETRIEVE_TOPK = 5                                                     # 检索的文档数量上限
 RERANKING_MODEL = '../model_weight/bge-reranker-v2-m3'                # 重排序模型的路径
@@ -199,32 +202,40 @@ $ curl --location 'http://127.0.0.1:18888/v1/chat/completions' \
       "content": "docker容器如何迁移"
     }
   ],
-  "tools": [],
-  "do_sample": true,
-  "temperature": 0,
-  "top_p": 0,
-  "n": 1,
-  "max_tokens": 0,
   "stream": true
 }'
 
-data: {"id": "262e7285-ce18-45ca-99d9-3399c9c639b3", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "数据检索中..."}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "对原问题进行重写扩展..."}, "finish_reason": null}]}
 
-data: {"id": "262e7285-ce18-45ca-99d9-3399c9c639b3", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "检索到5条数据"}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "重写扩展为3个问题"}, "finish_reason": null}]}
 
-data: {"id": "262e7285-ce18-45ca-99d9-3399c9c639b3", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 2, "message": "相关性分析中..."}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 2, "message": "判断是否需检索知识库..."}, "finish_reason": null}]}
 
-data: {"id": "262e7285-ce18-45ca-99d9-3399c9c639b3", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 2, "message": "存在3条相关数据"}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "检索文档切片中..."}, "finish_reason": null}]}
 
-data: {"id": "262e7285-ce18-45ca-99d9-3399c9c639b3", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "迁移", "step": 3, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "数据相关性分析中..."}, "finish_reason": null}]}
 
-data: {"id": "262e7285-ce18-45ca-99d9-3399c9c639b3", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "D", "step": 3, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "存在3条相关数据"}, "finish_reason": null}]}
 
-data: {"id": "262e7285-ce18-45ca-99d9-3399c9c639b3", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "ocker", "step": 3, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 4, "message": "正在总结答案..."}, "finish_reason": null}]}
+
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "要", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "迁", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "移", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "Docker", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
 ...[省略中间的数据流]
 
-data: {"id": "262e7285-ce18-45ca-99d9-3399c9c639b3", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": ["Docker容器化及项目环境管理"], "step": 3, "message": "回答完成"}, "finish_reason": "stop"}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "容", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "器", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "。", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": ["Docker容器化及项目环境管理"], "step": 4, "message": "回答完成"}, "finish_reason": null}]}
 
 data: [DONE]
 ```
