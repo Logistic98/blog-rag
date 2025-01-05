@@ -230,6 +230,8 @@ async def handle_streaming_response(data, llm, kb):
         logger.info(f'相关性判断后的文档切片: {hit_chunks}')
         logger.info(f'相关性判断后的相关文档数量: {len(hit_chunks)}')
         yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, f'存在{len(hit_chunks)}条相关数据'), ensure_ascii=False)}\n\n"
+    else:
+        yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, '跳过知识库文档检索...'), ensure_ascii=False)}\n\n"
 
     # Step 4: 总结最终答案
     yield f"data: {json.dumps(generate_stream_response(request_id, model, 4, '正在总结答案...'), ensure_ascii=False)}\n\n"

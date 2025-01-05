@@ -85,10 +85,13 @@
                 <div class="text markdown-body" v-html="message.text"></div>
               </div>
               <div v-else>
-                <div v-if="message.step !== null && message.step < 3 && message.message" class="step-message">
-                  {{ message.message }}
+                <div v-if="message.step !== null && message.step < 4 && message.message" class="step-message">
+                  第 {{ message.step }}/4 步：{{ message.message }}
                 </div>
-                <div v-if="message.step === 3 && message.text" class="render-switch">
+                <div v-else-if="message.step === 4 && !message.text" class="step-message">
+                  第 {{ message.step }}/4 步：{{ message.message }}
+                </div>
+                <div v-if="message.step === 4 && message.text" class="render-switch">
                   <span class="render-label">渲染</span>
                   <i-switch v-model="message.isMarkdown" size="default"></i-switch>
                 </div>
