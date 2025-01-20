@@ -28,7 +28,7 @@
 
 [3] 模型文件
 
-- 大模型基座：Qwen2.5-7B（可接入任意大模型或者商业API服务，保证是OpenAI接口格式即可）
+- 大模型基座：Qwen2.5-7B-Instruct（可接入任意大模型或者商业API服务，是OpenAI格式即可）
 - Embedding模型：bge-m3（同时支持密集检索、多向量检索、稀疏检索，有较好混合召回效果）
 - 重排序模型：bge-reranker-v2-m3（搜到的文档不都是相关的，重排序可让更相关的文档排前面）
 
@@ -51,7 +51,7 @@
 │   ├── build_index.py
 │   └── parse_md.py
 ├── model_weight                // 模型文件
-│   ├── Qwen2.5-7B
+│   ├── Qwen2.5-7B-Instruct
 │   ├── bge-m3
 │   └── bge-reranker-v2-m3
 ├── llm_service                 // 大模型服务
@@ -153,7 +153,7 @@ $ vim config.py
 # LLM相关配置
 LLM_BASE_URL = 'https://api.openai.com/v1'                            # 接入LLM服务的基础URL
 LLM_API_KEY = 'sk-xxx'                                                # 接入LLM服务的API_KEY
-LLM_MODEL = 'gpt-4o-mini-2024-07-18'                                  # 接入LLM服务的模型选择
+LLM_MODEL = 'gpt-4o-mini'                                             # 接入LLM服务的模型选择
 
 # 本服务的授权验证
 API_KEYS = ['sk-67hBSTsaf0qqvpTN2eA5A4433c2343D3867d0f74D8F0322']     # 本服务允许使用的API_KEY列表
@@ -195,7 +195,7 @@ $ curl --location 'http://127.0.0.1:18888/v1/chat/completions' \
 --header 'Content-Type: application/json' \
 --header 'Authorization: Bearer sk-67hBSTsaf0qqvpTN2eA5A4433c2343D3867d0f74D8F0322' \
 --data '{
-  "model": "gpt-4o-mini-2024-07-18",
+  "model": "gpt-4o-mini",
   "messages": [
     {
       "role": "user",

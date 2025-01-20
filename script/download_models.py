@@ -4,7 +4,7 @@ import os
 from huggingface_hub import snapshot_download
 
 model_repos = [
-    "Qwen/Qwen2.5-7B",
+    "Qwen/Qwen2.5-7B-Instruct",
     "BAAI/bge-m3",
     "BAAI/bge-reranker-v2-m3"
 ]
