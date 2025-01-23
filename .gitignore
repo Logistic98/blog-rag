@@ -1,9 +1,11 @@
+**/.DS_Store
+**/.idea/
+**/.vscode/
+**/__pycache__/
+**/node_modules/
+**/dist/
+**/package-lock.json
+**/*.log
 model_weight/
 milvus/
 rag_service/config.py
-**/.DS_Store
-**/.idea/
-**/__pycache__/
-**/node_modules/
-**/package-lock.json
-**/*.log

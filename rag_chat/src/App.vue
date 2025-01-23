@@ -828,6 +828,7 @@ export default {
 
 .content {
   margin-left: 10px;
+  max-width:100%;
 }
 
 .self-content {
