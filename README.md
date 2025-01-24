@@ -205,37 +205,37 @@ $ curl --location 'http://127.0.0.1:18888/v1/chat/completions' \
   "stream": true
 }'
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "对原问题进行重写扩展..."}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "对原问题进行重写扩展..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "重写扩展为3个问题"}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "重写扩展为3个问题"}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 2, "message": "判断是否需检索知识库..."}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 2, "message": "判断是否需检索知识库..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "检索文档切片中..."}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "检索文档切片中..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "数据相关性分析中..."}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "数据相关性分析中..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "存在3条相关数据"}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "存在3条相关数据"}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 4, "message": "正在总结答案..."}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 4, "message": "正在总结答案..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "要", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "要", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "迁", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "迁", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "移", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "移", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "Docker", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "Docker", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
 ...[省略中间的数据流]
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "容", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "容", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "器", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "器", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": "。", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "。", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini-2024-07-18", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": ["Docker容器化及项目环境管理"], "step": 4, "message": "回答完成"}, "finish_reason": null}]}
+data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": ["Docker容器化及项目环境管理"], "step": 4, "message": "回答完成"}, "finish_reason": null}]}
 
 data: [DONE]
 ```
