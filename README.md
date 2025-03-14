@@ -28,7 +28,7 @@
 
 [3] 模型文件
 
-- 大模型基座：QwQ-32B（可接入任意大模型或者商业API服务，符合OpenAI接口格式规范即可）
+- 大模型基座：Qwen2.5-7B-Instruct、QWQ-32B（可接入任意大模型服务，是OpenAI格式即可）
 - Embedding模型：bge-m3（同时支持密集检索、多向量检索、稀疏检索，有较好混合召回效果）
 - 重排序模型：bge-reranker-v2-m3（搜到的文档不都是相关的，重排序可让更相关的文档排前面）
 
@@ -52,6 +52,7 @@
 │   ├── build_index.py
 │   └── parse_md.py
 ├── model_weight                // 模型文件
+│   ├── QwQ-32B
 │   ├── Qwen2.5-7B-Instruct
 │   ├── bge-m3
 │   └── bge-reranker-v2-m3
