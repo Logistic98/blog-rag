@@ -3,9 +3,10 @@
 class Config:
 
     # LLM相关配置
-    LLM_BASE_URL = 'https://api.openai.com/v1'                            # 接入LLM服务的基础URL
+    LLM_BASE_URL = 'https://xxx.xxx.xxx/v1'                               # 接入LLM服务的基础URL
     LLM_API_KEY = 'sk-xxx'                                                # 接入LLM服务的API_KEY，若无需验证可随便传
     LLM_MODEL = 'gpt-4o-mini'                                             # 接入LLM服务的模型选择，若无需验证可随便传
+    LLM_COT_MODEL = 'deepseek-r1'                                         # 接入推理LLM服务的模型选择，若无需验证可随便传
 
     # 本服务的授权验证
     API_KEYS = ['sk-67hBSTsaf0qqvpTN2eA5A4433c2343D3867d0f74D8F0322']     # 本服务允许使用的API_KEY列表

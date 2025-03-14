@@ -28,7 +28,7 @@
 
 [3] 模型文件
 
-- 大模型基座：Qwen2.5-7B-Instruct（可接入任意大模型或者商业API服务，是OpenAI格式即可）
+- 大模型基座：QwQ-32B（可接入任意大模型或者商业API服务，符合OpenAI接口格式规范即可）
 - Embedding模型：bge-m3（同时支持密集检索、多向量检索、稀疏检索，有较好混合召回效果）
 - 重排序模型：bge-reranker-v2-m3（搜到的文档不都是相关的，重排序可让更相关的文档排前面）
 
@@ -48,6 +48,7 @@
 │   ├── blog_input
 │   └── blog_output
 ├── data_process                // 数据处理
+│   ├── config.py
 │   ├── build_index.py
 │   └── parse_md.py
 ├── model_weight                // 模型文件
@@ -109,6 +110,7 @@ $ docker run --name redis -p 6379:6379 -d redis:6.2.12 --requirepass "52497Vr62K
 // 安装Milvus
 $ mkdir milvus && cd milvus
 $ curl -sfL https://raw.githubusercontent.com/milvus-io/milvus/master/scripts/standalone_embed.sh -o standalone_embed.sh
+$ chmod u+x ./standalone_embed.sh
 $ ./standalone_embed.sh start
 
 // 建议打开Milvus的账号验证
@@ -133,6 +135,32 @@ Step4：数据切片及入库
 
 ```shell
 $ cd data_process 
+$ mv example_config.py config.py
+$ vim config.py
+```
+
+如果前面的步骤都使用我的默认配置，这里只需要改下Milvus和Redis的IP即可
+
+```python
+MILVUS_HOST = "127.0.0.1"                            # Milvus主机地址
+MILVUS_PORT = "19530"                                # Milvus端口
+MILVUS_COLLECTION_NAME = "vuepress_blog"             # Milvus集合名称
+MILVUS_USER = "root"                                 # Milvus用户名
+MILVUS_PASSWORD = "cG72vdgVWX5ypaWV"                 # Milvus密码
+REDIS_HOST = "127.0.0.1"                             # Redis主机地址
+REDIS_PORT = 6379                                    # Redis端口
+REDIS_PASSWORD = "52497Vr62K94qeksg82679o22kr774ee"  # Redis密码
+REDIS_KEY = "file_hashes"                            # Redis键
+BGE_M3_PATH = "../model_weight/bge-m3"               # 模型路径
+DATA_DIR = "../data/blog_output"                     # 数据目录
+BATCH_SIZE = 5                                       # 批次大小
+MAX_CONTENT_LENGTH = 60000                           # 最大内容长度
+LOG_FILE = "build_index.log"                         # 日志文件路径
+```
+
+执行数据切片及入库的程序
+
+```shell
 $ python3 parse_md.py
 $ python3 build_index.py
 ```
@@ -147,13 +175,14 @@ $ mv example_config.py config.py
 $ vim config.py
 ```
 
-如果前面的步骤都使用我的默认配置，则这里只需要修改大模型服务配置即可，实测Qwen2.5-7B就可以有比较好的效果。
+如果前面的步骤都使用我的默认配置，则这里只需要修改大模型服务配置即可，实测QwQ-32B就可以有比较好的效果。
 
 ```shell
 # LLM相关配置
-LLM_BASE_URL = 'https://api.openai.com/v1'                            # 接入LLM服务的基础URL
+LLM_BASE_URL = 'https://xxx.xxx.xxx/v1'                               # 接入LLM服务的基础URL
 LLM_API_KEY = 'sk-xxx'                                                # 接入LLM服务的API_KEY
 LLM_MODEL = 'gpt-4o-mini'                                             # 接入LLM服务的模型选择
+LLM_COT_MODEL = 'deepseek-r1'                                         # 接入推理LLM服务的模型选择
 
 # 本服务的授权验证
 API_KEYS = ['sk-67hBSTsaf0qqvpTN2eA5A4433c2343D3867d0f74D8F0322']     # 本服务允许使用的API_KEY列表
@@ -191,11 +220,11 @@ $ python3 rag_server.py
 验证接口服务：
 
 ```shell
-$ curl --location 'http://127.0.0.1:18888/v1/chat/completions' \
+curl --location 'http://127.0.0.1:18888/v1/chat/completions' \
 --header 'Content-Type: application/json' \
 --header 'Authorization: Bearer sk-67hBSTsaf0qqvpTN2eA5A4433c2343D3867d0f74D8F0322' \
 --data '{
-  "model": "gpt-4o-mini",
+  "model": "deepseek-r1",
   "messages": [
     {
       "role": "user",
@@ -204,38 +233,43 @@ $ curl --location 'http://127.0.0.1:18888/v1/chat/completions' \
   ],
   "stream": true
 }'
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "调整问题上下文指代信息..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "对原问题进行重写扩展..."}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "根据上下文重写后的问题为：如何迁移Docker容器？"}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "重写扩展为3个问题"}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "对问题进行重写扩展..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 2, "message": "判断是否需检索知识库..."}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "重写扩展为3个问题"}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "检索文档切片中..."}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 2, "message": "判断是否需检索知识库..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "数据相关性分析中..."}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "检索文档切片中..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "存在3条相关数据"}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "数据相关性分析中..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 4, "message": "正在总结答案..."}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "存在2条相关数据"}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "要", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 4, "message": "正在总结答案..."}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "迁", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": "<think>", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "移", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+...[省略中间思考过程]
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "Docker", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": "</think>", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-...[省略中间的数据流]
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": "\n\n", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "容", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": "要将", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "器", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": "D", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": "。", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": "ocker", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
 
-data: {"id": "d4b0d52f-9e88-4eae-a423-a040b25ffd15", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": ["Docker容器化及项目环境管理"], "step": 4, "message": "回答完成"}, "finish_reason": null}]}
+...[省略最终回复数据]
+
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": "。", "step": 4, "message": "正在总结...", "reference": []}, "finish_reason": null}]}
+
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": ["Docker容器化及项目环境管理"], "step": 4, "message": "回答完成"}, "finish_reason": null}]}
 
 data: [DONE]
 ```

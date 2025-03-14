@@ -16,7 +16,7 @@ from llm import LLM
 from models import ChatCompletionRequest
 from validators import chunk_judge_relevant, chat_judge_relevant
 from logging_setup import logger
-from prompts import build_rewrite_prompt, ANSWER_PROMPT_TEMPLATE
+from prompts import build_rewrite_prompt, ANSWER_PROMPT_TEMPLATE, CONTEXT_REWRITE_PROMPT_TEMPLATE
 
 
 def generate_stream_response(
@@ -78,6 +78,32 @@ def deduplicate_chunks(chunks):
         deduplicated_chunks.append(restored_chunk)
 
     return deduplicated_chunks
+
+
+async def rewrite_contextual_references(llm: LLM, model: str, original_question: str, history_messages: list) -> str:
+    """
+    使用 LLM 对用户原始问题中的上下文指代进行重写，输出调整后的完整明确问题。
+    若失败，直接返回原问题。
+    """
+    history_str = "\n".join([f"{msg['role']}：{msg['content']}" for msg in history_messages])
+    context_rewrite_prompt = CONTEXT_REWRITE_PROMPT_TEMPLATE.format(
+        history=history_str,
+        question=original_question
+    )
+    try:
+        response = await llm.chat_no_stream(
+            model,
+            [
+                {"role": "system", "content": "你是一个上下文问题重写助手。"},
+                {"role": "user", "content": context_rewrite_prompt}
+            ],
+            temperature=0.3
+        )
+        adjusted_question = response["choices"][0]["message"]["content"].strip()
+        return adjusted_question if adjusted_question else original_question
+    except Exception as e:
+        logger.warning(f"上下文指代重写失败: {e}")
+        return original_question
 
 
 async def rewrite_question(llm: LLM, model: str, original_question: str, question_rewrite_num: int) -> list:
@@ -173,6 +199,7 @@ async def handle_streaming_response(data, llm, kb):
     """
     request_id = str(uuid.uuid4())
     model = kb.config.LLM_MODEL
+    cot_model = kb.config.LLM_COT_MODEL
     messages = [{"role": msg.role, "content": msg.content} for msg in data.messages]
     last_message_content = messages[-1]["content"]
     logger.info(f'用户输入的传参: {json.dumps(data.dict(), ensure_ascii=False)}')
@@ -181,15 +208,19 @@ async def handle_streaming_response(data, llm, kb):
     needs_retrieve_chunk = True
 
     # Step 1: 对原问题进行重写扩展
-    yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, '对原问题进行重写扩展...'), ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, '调整问题上下文指代信息...'), ensure_ascii=False)}\n\n"
+    adjusted_question = await rewrite_contextual_references(llm, model, last_message_content, messages[:-1])
+    yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, f'根据上下文重写后的问题为：{adjusted_question}'), ensure_ascii=False)}\n\n"
+    logger.info(f"上下文重写后的问题: {adjusted_question}")
+    yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, '对问题进行重写扩展...'), ensure_ascii=False)}\n\n"
     if kb.config.QUESTION_REWRITE_ENABLED:
         await asyncio.sleep(0)
         expanded_questions = await rewrite_question(
-            llm, model, last_message_content, kb.config.QUESTION_REWRITE_NUM
+            llm, model, adjusted_question, kb.config.QUESTION_REWRITE_NUM
         )
-        expanded_questions.append(last_message_content)
+        expanded_questions.append(adjusted_question)
     else:
-        expanded_questions = [last_message_content]
+        expanded_questions = [adjusted_question]
     yield f"data: {json.dumps(generate_stream_response(request_id, model, 1, f'重写扩展为{len(expanded_questions)}个问题'), ensure_ascii=False)}\n\n"
     logger.info(f"重写扩展后的问题：{expanded_questions}")
 
@@ -234,9 +265,9 @@ async def handle_streaming_response(data, llm, kb):
         yield f"data: {json.dumps(generate_stream_response(request_id, model, 3, '跳过知识库文档检索...'), ensure_ascii=False)}\n\n"
 
     # Step 4: 总结最终答案
-    yield f"data: {json.dumps(generate_stream_response(request_id, model, 4, '正在总结答案...'), ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps(generate_stream_response(request_id, cot_model, 4, '正在总结答案...'), ensure_ascii=False)}\n\n"
     if needs_retrieve_chunk and 'hit_chunks' in locals() and hit_chunks:
-        async for response in decorate_answer(request_id, llm, model, hit_chunks, messages,
+        async for response in decorate_answer(request_id, llm, cot_model, hit_chunks, messages,
                                               data.temperature, data.extra_body, data.stop, stream=True):
             for choice in response.get('choices', []):
                 content = choice['delta'].get('content', None)
@@ -246,7 +277,7 @@ async def handle_streaming_response(data, llm, kb):
                 choice['delta']['reference'] = []
             yield f"data: {json.dumps(response, ensure_ascii=False)}\n\n"
 
-        final_chunk = generate_stream_response(request_id, model, 4, '回答完成', references)
+        final_chunk = generate_stream_response(request_id, cot_model, 4, '回答完成', references)
         logger.info(f'流式输出最终响应: {full_response}')
         yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
 
@@ -291,6 +322,7 @@ async def handle_non_streaming_response(data, llm, kb):
     """
     request_id = str(uuid.uuid4())
     model = kb.config.LLM_MODEL
+    cot_model = kb.config.LLM_COT_MODEL
     messages = [{"role": msg.role, "content": msg.content} for msg in data.messages]
     last_message_content = messages[-1]["content"]
     logger.info(f'用户输入的传参: {json.dumps(data.dict(), ensure_ascii=False)}')
@@ -298,13 +330,15 @@ async def handle_non_streaming_response(data, llm, kb):
     needs_retrieve_chunk = True
 
     # Step 1: 对原问题进行重写扩展
+    adjusted_question = await rewrite_contextual_references(llm, model, last_message_content, messages[:-1])
+    logger.info(f"上下文重写后的问题: {adjusted_question}")
     if kb.config.QUESTION_REWRITE_ENABLED:
         expanded_questions = await rewrite_question(
             llm, model, last_message_content, kb.config.QUESTION_REWRITE_NUM
         )
-        expanded_questions.append(last_message_content)
+        expanded_questions.append(adjusted_question)
     else:
-        expanded_questions = [last_message_content]
+        expanded_questions = [adjusted_question]
     logger.info(f"重写扩展后的问题：{expanded_questions}")
 
     # Step 2: 判断是否需检索知识库
@@ -349,14 +383,14 @@ async def handle_non_streaming_response(data, llm, kb):
     # Step 4: 返回最终回答
     if needs_retrieve_chunk and hit_chunks:
         async for response in decorate_answer(
-            request_id, llm, model, hit_chunks, messages,
+            request_id, llm, cot_model, hit_chunks, messages,
             data.temperature, data.extra_body, data.stop, stream=False
         ):
             response['choices'][0]['message']['reference'] = references
             logger.info(f'非流式输出最终响应: {response["choices"][0]["message"]["content"]}')
             return response
     else:
-        response = await llm.chat_no_stream(model, messages, data.temperature, data.extra_body, data.stop)
+        response = await llm.chat_no_stream(cot_model, messages, data.temperature, data.extra_body, data.stop)
         response['choices'][0]['message']['reference'] = []
         response["id"] = request_id
         logger.info(f'非流式最终响应: {response["choices"][0]["message"]["content"]}')

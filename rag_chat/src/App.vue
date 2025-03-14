@@ -98,7 +98,7 @@
                 <VueMarkdown
                   v-if="message.isMarkdown && message.text"
                   class="markdown markdown-body"
-                  :source="message.text"
+                  :source="processThinkTags(message.text)"
                 ></VueMarkdown>
                 <div class="text markdown-body" v-else-if="!message.isMarkdown && message.text" v-html="message.text"></div>
                 <div v-if="message.loading && message.step === 0" class="log-loading">
@@ -154,7 +154,7 @@
 <script>
 import "github-markdown-css/github-markdown-light.css";
 import VueMarkdown from 'vue-markdown';
-import {API_URL, API_KEY, MODEL_NAME, DOC_URL_TEMPLATE, SERVER_NAME, USER_NAME, PROLOGUE, EXAMPLE_QUESTIONS} from './config';
+import { API_URL, API_KEY, MODEL_NAME, DOC_URL_TEMPLATE, SERVER_NAME, USER_NAME, PROLOGUE, EXAMPLE_QUESTIONS } from './config';
 
 export default {
   components: {
@@ -220,12 +220,20 @@ export default {
     window.removeEventListener('resize', this.handleResize);
   },
   methods: {
+    processThinkTags(text) {
+      if (!text) return text;
+      let processed = text.replace(/<think>([\s\S]*?)<\/think>/g, (match, content) => {
+        return `<div class="deep-thinking"><div class="deep-thinking-title">深度思考</div><blockquote>${content.trim()}</blockquote></div>`;
+      });
+      processed = processed.replace(/<think>/g, '<div class="deep-thinking"><div class="deep-thinking-title">深度思考</div><blockquote>');
+      processed = processed.replace(/<\/think>/g, '</blockquote></div>');
+      return processed;
+    },
     handleResize() {
       this.windowWidth = window.innerWidth;
       if (!this.isMobile) {
         this.isLeftVisible = true;
-      }
-      else {
+      } else {
         this.isLeftVisible = false;
       }
       this.$nextTick(() => {
@@ -381,14 +389,28 @@ export default {
       };
       this.currentRecord.value.push(assistantMessage);
 
-      let sendMsg = this.text.trim();
       this.text = '';
       this.currentRecord.sending = true;
       this.scrollToBottom();
 
-      let sendData = {
+      const historyMessages = [];
+      const conversation = this.currentRecord.value;
+
+      let roundCount = 0;
+      for (let i = conversation.length - 2; i >= 0 && roundCount < 3; i--) {
+        const msg = conversation[i];
+        historyMessages.unshift({
+          role: msg.isSelf ? 'user' : 'assistant',
+          content: msg.text
+        });
+        if (msg.isSelf) {
+          roundCount++;
+        }
+      }
+
+      const sendData = {
         model: MODEL_NAME,
-        messages: [{ role: 'user', content: sendMsg }],
+        messages: historyMessages,
         stream: true
       };
 
@@ -638,25 +660,6 @@ export default {
   overflow: hidden;
 }
 
-.chat_right_head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 20px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-  flex: 0 0 70px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat_title {
-  font-size: 20px;
-  font-weight: bolder;
-  margin: 0 auto;
-  text-align: center;
-}
-
 .chat_right_head_mobile {
   display: none;
   justify-content: space-between;
@@ -680,6 +683,25 @@ export default {
   font-size: 24px;
   cursor: pointer;
   margin-right: 10px;
+}
+
+.chat_right_head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  flex: 0 0 70px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat_title {
+  font-size: 20px;
+  font-weight: bolder;
+  margin: 0 auto;
+  text-align: center;
 }
 
 .chat_right_body {
@@ -1000,7 +1022,6 @@ export default {
   --color-danger-fg: #d1242f;
   --color-done-fg: #8250df;
 }
-
 @media (max-width: 768px) {
   .avatar {
     width: 35px;

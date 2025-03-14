@@ -9,3 +9,4 @@
 model_weight/
 milvus/
 rag_service/config.py
+data_process/config.py

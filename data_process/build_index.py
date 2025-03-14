@@ -13,6 +13,7 @@ from pymilvus import FieldSchema, CollectionSchema, DataType, Collection, connec
 import redis
 from milvus_model.hybrid import BGEM3EmbeddingFunction
 from logging.handlers import RotatingFileHandler
+from config import Config
 
 
 def batch_generator(iterable, batch_size):
@@ -341,22 +342,6 @@ def process_documents(data_dir, collection_name, batch_size, ef, col, redis_mana
 
 if __name__ == "__main__":
 
-    # 配置项
-    MILVUS_HOST = "127.0.0.1"                            # Milvus主机地址
-    MILVUS_PORT = "19530"                                # Milvus端口
-    MILVUS_COLLECTION_NAME = "vuepress_blog"             # Milvus集合名称
-    MILVUS_USER = "root"                                 # Milvus用户名
-    MILVUS_PASSWORD = "cG72vdgVWX5ypaWV"                 # Milvus密码
-    REDIS_HOST = "127.0.0.1"                             # Redis主机地址
-    REDIS_PORT = 6379                                    # Redis端口
-    REDIS_PASSWORD = "52497Vr62K94qeksg82679o22kr774ee"  # Redis密码
-    REDIS_KEY = "file_hashes"                            # Redis键
-    BGE_M3_PATH = "../model_weight/bge-m3"               # 模型路径
-    DATA_DIR = "../data/blog_output"                     # 数据目录
-    BATCH_SIZE = 5                                       # 批次大小
-    MAX_CONTENT_LENGTH = 60000                           # 最大内容长度
-    LOG_FILE = "build_index.log"                         # 日志文件路径
-
     class TqdmLoggingHandler(logging.Handler):
         """自定义日志处理器，用于与 tqdm 兼容的日志输出。"""
         def emit(self, record):
@@ -374,7 +359,7 @@ if __name__ == "__main__":
     tqdm_handler.setFormatter(formatter)
     logger.addHandler(tqdm_handler)
 
-    file_handler = RotatingFileHandler(LOG_FILE, maxBytes=10**6, backupCount=5, encoding='utf-8')
+    file_handler = RotatingFileHandler(Config.LOG_FILE, maxBytes=10**6, backupCount=5, encoding='utf-8')
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 
@@ -386,15 +371,15 @@ if __name__ == "__main__":
         DEVICE = "cpu"
     logging.info(f"使用设备: {DEVICE}")
 
-    redis_manager = RedisManager(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_KEY)
-    milvus_manager = MilvusManager(MILVUS_HOST, MILVUS_PORT, MILVUS_USER, MILVUS_PASSWORD)
+    redis_manager = RedisManager(Config.REDIS_HOST, Config.REDIS_PORT, Config.REDIS_PASSWORD, Config.REDIS_KEY)
+    milvus_manager = MilvusManager(Config.MILVUS_HOST, Config.MILVUS_PORT, Config.MILVUS_USER, Config.MILVUS_PASSWORD)
 
     try:
         ef = BGEM3EmbeddingFunction(
-            model_name=BGE_M3_PATH,
+            model_name=Config.BGE_M3_PATH,
             use_fp16=False,
             device=DEVICE,
-            batch_size=BATCH_SIZE
+            batch_size=Config.BATCH_SIZE
         )
         dense_dim = ef.dim["dense"]
         logging.info("嵌入函数初始化成功。")
@@ -403,13 +388,13 @@ if __name__ == "__main__":
         exit(1)
 
     try:
-        collection = milvus_manager.create_collection(MILVUS_COLLECTION_NAME, dense_dim, MAX_CONTENT_LENGTH)
+        collection = milvus_manager.create_collection(Config.MILVUS_COLLECTION_NAME, dense_dim, Config.MAX_CONTENT_LENGTH)
     except Exception as e:
         logging.error(f"创建或获取 Milvus 集合时出错：{e}")
         exit(1)
 
     try:
-        process_documents(DATA_DIR, MILVUS_COLLECTION_NAME, BATCH_SIZE, ef, collection, redis_manager, MAX_CONTENT_LENGTH)
+        process_documents(Config.DATA_DIR, Config.MILVUS_COLLECTION_NAME, Config.BATCH_SIZE, ef, collection, redis_manager, Config.MAX_CONTENT_LENGTH)
     except Exception as e:
         logging.error(f"处理文档时出错：{e}")
         exit(1)
