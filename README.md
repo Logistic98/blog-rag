@@ -234,21 +234,21 @@ curl --location 'http://127.0.0.1:18888/v1/chat/completions' \
   ],
   "stream": true
 }'
-data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "调整问题上下文指代信息..."}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "调整问题上下文指代信息..."}, "finish_reason": null}]}
 
-data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "根据上下文重写后的问题为：如何迁移Docker容器？"}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "根据上下文重写后的问题为：如何迁移Docker容器？"}, "finish_reason": null}]}
 
-data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "对问题进行重写扩展..."}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "对问题进行重写扩展..."}, "finish_reason": null}]}
 
-data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "重写扩展为3个问题"}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 1, "message": "重写扩展为3个问题"}, "finish_reason": null}]}
 
-data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 2, "message": "判断是否需检索知识库..."}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 2, "message": "判断是否需检索知识库..."}, "finish_reason": null}]}
 
-data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "检索文档切片中..."}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "检索文档切片中..."}, "finish_reason": null}]}
 
-data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "数据相关性分析中..."}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "数据相关性分析中..."}, "finish_reason": null}]}
 
-data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "gpt-4o-mini", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "存在2条相关数据"}, "finish_reason": null}]}
+data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 3, "message": "存在2条相关数据"}, "finish_reason": null}]}
 
 data: {"id": "8d5abe47-36c7-4050-b91a-179af96c833c", "model": "deepseek-r1", "choices": [{"index": 0, "delta": {"role": null, "content": null, "reference": [], "step": 4, "message": "正在总结答案..."}, "finish_reason": null}]}
 
