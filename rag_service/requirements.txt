@@ -1,0 +1,12 @@
+uvicorn
+fastapi
+pydantic
+aiohttp
+openai
+pymilvus==2.4.9
+milvus-model==0.2.8
+FlagEmbedding==1.2.11
+torch
+datasets
+peft
+tiktoken

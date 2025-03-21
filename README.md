@@ -69,6 +69,7 @@
 ├── milvus                      // 向量检索库
 │   └── standalone_embed.sh
 ├── rag_chat                    // 问答页面
+│   ├── .env
 │   ├── babel.config.js
 │   ├── jsconfig.json
 │   ├── package.json
@@ -76,6 +77,7 @@
 │   ├── src
 │   └── vue.config.js
 ├── rag_service                // RAG服务
+│   ├── requirements.txt
 │   ├── config.py
 │   ├── fastapi_app.py
 │   ├── knowledge_base.py
@@ -88,17 +90,19 @@
 └── script                     // 实用脚本
 │   ├── download_models.py
 │   ├── milvus_password.py
+│   ├── requirements.txt
 │   └── rag_service_test.sh
-├── requirements.txt
+├── build.sh 
+├── start.sh
+├── Dockerfile
 └── README.md
 ```
 
-Step1：安装基础依赖
+Step1：安装Conda环境
 
 ```shell
 $ conda create -n blog_rag python=3.10
 $ conda activate blog_rag
-$ pip3 install -r requirements.txt
 ```
 
 Step2：安装基础中间件
@@ -129,6 +133,7 @@ Step3：下载所需模型
 ```shell
 $ mkdir model_weight
 $ cd script
+$ pip3 install -r requirements.txt
 $ python3 download_models.py
 ```
 
@@ -136,6 +141,7 @@ Step4：数据切片及入库
 
 ```shell
 $ cd data_process 
+$ pip3 install -r requirements.txt
 $ mv example_config.py config.py
 $ vim config.py
 ```
@@ -215,6 +221,7 @@ THRESHOLD = 0.85                                                      # 使用't
 
 ```shell
 $ cd rag_service
+$ pip3 install -r requirements.txt
 $ python3 rag_server.py
 ```
 
@@ -281,6 +288,13 @@ Step6：安装前端依赖并启动
 $ cd rag_chat 
 $ npm install
 $ npm run serve
+```
+
+另注：Step5和Step6部署应用程序可以使用Docker一键脚本，如果有GPU环境可以在build.sh里额外加上--gpus all参数。
+
+```shell
+$ chmod u+x build.sh
+$ ./build.sh
 ```
 
 启动成功之后，使用Chrome浏览器访问 [http://localhost:28888](http://localhost:28888) 地址即可使用。

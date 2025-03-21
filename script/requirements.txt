@@ -1,0 +1,2 @@
+huggingface_hub
+pymilvus==2.4.9
