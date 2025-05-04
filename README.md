@@ -2,7 +2,7 @@
 
 ## 1. 项目简介
 
-针对自己的 [Quantum Bit](https://www.eula.club/) 博客构建的私域知识问答系统，主要特性如下：
+针对自己的 [Quantum Bit](https://www.imiao.top/) 博客构建的私域知识问答系统，主要特性如下：
 
 - 数据切片：针对博客文章的特性进行定制化的精准解析与分割，可得到高质量的数据切片，支持增量构建索引。
 - 检索系统：采用Milvus向量检索库，利用bge-m3、bge-reranker-v2-m3检索和重排序，有较高检索准确率。
@@ -12,7 +12,7 @@
 
 ![blog-rag效果图](README.assets/display/display.png)
 
-本项目的技术实现细节详见我的博客：[针对自己博客定制的私域知识问答系统](https://www.eula.club/blogs/针对自己博客定制的私域知识问答系统.html)
+本项目的技术实现细节详见我的博客：[针对自己博客定制的私域知识问答系统](https://www.imiao.top/blogs/针对自己博客定制的私域知识问答系统.html)
 
 ## 2. 技术架构
 
